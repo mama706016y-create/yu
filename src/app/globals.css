@@ -1,0 +1,35 @@
+/* ============================================
+   全站樣式設定檔
+   使用 Tailwind CSS v4 的 CSS-first 設定方式（@theme）
+   在這裡定義的顏色會自動變成 Tailwind 的 class，
+   例如 --color-saffron 會產生 text-saffron / bg-saffron 這些 class
+   ============================================ */
+
+@import 'tailwindcss';
+
+@theme {
+  /* ---- 色彩系統：靈感來自「深夜廚房」的氛圍 ---- */
+  --color-hearth: #1c2321;      /* 灶黑：主背景色，比純黑柔和 */
+  --color-card: #262e2b;         /* 卡片背景：比背景稍亮一階，做出層次 */
+  --color-parchment: #ede6d6;    /* 米紙白：主要文字顏色 */
+  --color-saffron: #d4a24c;      /* 番紅花金：主要強調色（連結、按鈕、標籤） */
+  --color-herb: #6b8f71;         /* 香草綠：次要強調色（分類標籤） */
+
+  /* ---- 字體系統 ---- */
+  --font-display: 'Noto Serif TC', serif; /* 展示用襯線字體：菜名、標題 */
+  --font-sans: 'Noto Sans TC', sans-serif; /* 內文字體：其餘所有文字 */
+}
+
+body {
+  background-color: var(--color-hearth);
+  color: var(--color-parchment);
+  font-family: var(--font-sans);
+}
+
+/* 讓工具列的 line-clamp 等 utility 正常運作 */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
