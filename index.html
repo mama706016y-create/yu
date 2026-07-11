@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>我的日式食譜本</title>
+  <meta name="description" content="溫暖日系風格的個人菜單與食譜收藏網站" />
+
+  <!-- ===== PWA 必要設定 ===== -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#6B4226" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="食譜本" />
+
+  <!-- ===== Tailwind CSS（CDN 版本，不用安裝） ===== -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ===== Google Fonts：襯線體(標題) + 黑體(內文) ===== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+
+  <script>
+    // 自訂 Tailwind 顏色主題，對應「溫暖日系木質風」配色
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: '#FAF6F0',      // 奶油白背景
+            walnut: '#5C4433',     // 木質棕（主要文字/線條）
+            walnutLight: '#8C6F5A',// 淺木棕（次要文字）
+            basil: '#7A8450',      // 羅勒綠（點綴色）
+            orange: '#D98E51',     // 柔和橘（點綴色）
+          },
+          fontFamily: {
+            serif: ['"Noto Serif TC"', 'serif'],
+            sans: ['"Noto Sans TC"', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* 卡片圖片載入前的預設底色，避免版面跳動 */
+    .recipe-img { background-color: #EFE7DB; }
+    /* 分類篩選按鈕被選中時的樣式 */
+    .filter-btn.active {
+      background-color: #5C4433;
+      color: #FAF6F0;
+    }
+  </style>
+</head>
+
+<body class="bg-cream font-sans text-walnut min-h-screen">
+
+  <!-- ===== 頁首 ===== -->
+  <header class="max-w-5xl mx-auto px-6 pt-10 pb-6 text-center">
+    <h1 class="font-serif text-4xl font-bold tracking-wide">我的食譜本</h1>
+    <p class="text-walnutLight mt-2 text-sm tracking-widest">HOMEMADE · WITH LOVE</p>
+  </header>
+
+  <!-- ===== 分類篩選按鈕 ===== -->
+  <nav class="max-w-5xl mx-auto px-6 mb-8 flex flex-wrap justify-center gap-3" id="filterNav">
+    <!-- 按鈕會由 JS 動態產生，這裡先放一個「全部」當預設 -->
+    <button data-category="全部" class="filter-btn active px-5 py-2 rounded-full border border-walnut text-sm transition">全部</button>
+  </nav>
+
+  <!-- ===== 食譜卡片區 ===== -->
+  <main class="max-w-5xl mx-auto px-6 pb-20">
+    <div id="loadingState" class="text-center text-walnutLight py-20">
+      正在為你準備菜單 🍳...
+    </div>
+    <div id="errorState" class="hidden text-center text-orange py-20"></div>
+    <div id="recipeGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+  </main>
+
+  <!-- ===== 食譜詳細內容彈窗（Modal） ===== -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+    <div class="bg-cream rounded-2xl max-w-md w-full p-6 relative shadow-xl">
+      <button id="closeModal" class="absolute top-4 right-4 text-walnutLight text-2xl leading-none">&times;</button>
+      <img id="modalImg" class="w-full h-48 object-cover rounded-xl mb-4 recipe-img" />
+      <h2 id="modalName" class="font-serif text-2xl font-bold mb-2"></h2>
+      <div id="modalTags" class="flex flex-wrap gap-2 mb-3"></div>
+      <p id="modalTime" class="text-sm text-basil mb-4"></p>
+      <h3 class="font-serif font-bold mb-1 text-walnut">食材</h3>
+      <p id="modalIngredients" class="text-sm text-walnutLight leading-relaxed whitespace-pre-line"></p>
+    </div>
+  </div>
+
+  <footer class="text-center text-xs text-walnutLight pb-8">
+    © <span id="year"></span> 我的食譜本
+  </footer>
+
+  <script>
+    // ========================================
+    // 全域變數
+    // ========================================
+    const ALL_CATEGORIES = ['主食', '副菜', '湯品', '甜點']; // 固定四大分類
+    let allRecipes = [];      // 存放從後端拿到的所有食譜
+    let currentFilter = '全部'; // 目前選擇的分類
+
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // ========================================
+    // 1. 建立分類篩選按鈕
+    // ========================================
+    function renderFilterButtons() {
+      const nav = document.getElementById('filterNav');
+      ALL_CATEGORIES.forEach((cat) => {
+        const btn = document.createElement('button');
+        btn.dataset.category = cat;
+        btn.textContent = cat;
+        btn.className = 'filter-btn px-5 py-2 rounded-full border border-walnut text-sm transition hover:bg-walnut hover:text-cream';
+        nav.appendChild(btn);
+      });
+
+      // 幫所有按鈕（包含原本的「全部」）加上點擊事件
+      nav.querySelectorAll('.filter-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          currentFilter = btn.dataset.category;
+          // 更新按鈕的選中樣式
+          nav.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          renderRecipes(); // 重新渲染卡片列表
+        });
+      });
+    }
+
+    // ========================================
+    // 2. 向後端 API 拿食譜資料
+    // ========================================
+    async function fetchRecipes() {
+      const loadingEl = document.getElementById('loadingState');
+      const errorEl = document.getElementById('errorState');
+      try {
+        const res = await fetch('/api/recipes');
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || '讀取失敗');
+        }
+
+        allRecipes = data.recipes;
+        loadingEl.classList.add('hidden');
+        renderRecipes();
+      } catch (err) {
+        loadingEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+        errorEl.textContent = '哎呀，食譜載入失敗了：' + err.message;
+        console.error(err);
+      }
+    }
+
+    // ========================================
+    // 3. 依照目前篩選條件，渲染食譜卡片
+    // ========================================
+    function renderRecipes() {
+      const grid = document.getElementById('recipeGrid');
+      grid.innerHTML = '';
+
+      // 篩選邏輯：如果選「全部」就不過濾，否則只顯示該分類包含的食譜
+      const filtered = currentFilter === '全部'
+        ? allRecipes
+        : allRecipes.filter((r) => r.categories.includes(currentFilter));
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `<p class="col-span-full text-center text-walnutLight py-10">這個分類還沒有食譜喔，去 Notion 新增一筆看看！</p>`;
+        return;
+      }
+
+      filtered.forEach((recipe) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white/60 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer border border-walnut/10';
+        card.innerHTML = `
+          <div class="w-full h-40 recipe-img overflow-hidden">
+            ${recipe.imageUrl
+              ? `<img src="${recipe.imageUrl}" alt="${recipe.name}" class="w-full h-full object-cover" onerror="this.style.display='none'"/>`
+              : `<div class="w-full h-full flex items-center justify-center text-walnutLight text-3xl">🍽️</div>`
+            }
+          </div>
+          <div class="p-4">
+            <h3 class="font-serif text-lg font-bold mb-1 truncate">${recipe.name}</h3>
+            <div class="flex flex-wrap gap-1 mb-2">
+              ${recipe.categories.map(c => `<span class="text-xs bg-basil/10 text-basil px-2 py-0.5 rounded-full">${c}</span>`).join('')}
+            </div>
+            ${recipe.cookTime ? `<p class="text-xs text-orange">⏱ ${recipe.cookTime} 分鐘</p>` : ''}
+          </div>
+        `;
+        card.addEventListener('click', () => openModal(recipe));
+        grid.appendChild(card);
+      });
+    }
+
+    // ========================================
+    // 4. 開啟 / 關閉 詳細內容彈窗
+    // ========================================
+    function openModal(recipe) {
+      document.getElementById('modalImg').src = recipe.imageUrl || '';
+      document.getElementById('modalName').textContent = recipe.name;
+      document.getElementById('modalTags').innerHTML = recipe.categories
+        .map(c => `<span class="text-xs bg-basil/10 text-basil px-2 py-0.5 rounded-full">${c}</span>`).join('');
+      document.getElementById('modalTime').textContent = recipe.cookTime ? `⏱ 烹飪時間約 ${recipe.cookTime} 分鐘` : '';
+      document.getElementById('modalIngredients').textContent = recipe.ingredients || '（尚未填寫食材）';
+      document.getElementById('modal').classList.remove('hidden');
+    }
+    document.getElementById('closeModal').addEventListener('click', () => {
+      document.getElementById('modal').classList.add('hidden');
+    });
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') e.target.classList.add('hidden');
+    });
+
+    // ========================================
+    // 5. 註冊 Service Worker（PWA 的核心）
+    // ========================================
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(() => console.log('Service Worker 註冊成功'))
+          .catch((err) => console.error('Service Worker 註冊失敗:', err));
+      });
+    }
+
+    // ========================================
+    // 初始化
+    // ========================================
+    renderFilterButtons();
+    fetchRecipes();
+  </script>
+</body>
+</html>
